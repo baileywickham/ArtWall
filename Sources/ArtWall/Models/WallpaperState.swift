@@ -1,0 +1,142 @@
+import Foundation
+
+@Observable
+final class WallpaperState {
+    var catalog: Catalog?
+    var currentImage: ArtImage?
+    var dislikedIds: Set<String> = [] {
+        didSet {
+            UserDefaults.standard.set(Array(dislikedIds), forKey: "dislikedIds")
+        }
+    }
+    var selectedPackIds: Set<Int> = [] {
+        didSet {
+            UserDefaults.standard.set(Array(selectedPackIds), forKey: "selectedPackIds")
+        }
+    }
+    var autoRotateEnabled: Bool {
+        didSet { UserDefaults.standard.set(autoRotateEnabled, forKey: "autoRotateEnabled"); scheduleTimer() }
+    }
+    var rotateInterval: TimeInterval {
+        didSet { UserDefaults.standard.set(rotateInterval, forKey: "rotateInterval"); scheduleTimer() }
+    }
+
+    private var timer: Timer?
+
+    static let intervals: [(String, TimeInterval)] = [
+        ("1 minute", 60),
+        ("15 minutes", 900),
+        ("30 minutes", 1800),
+        ("1 hour", 3600),
+        ("2 hours", 7200),
+        ("4 hours", 14400),
+        ("Daily", 86400),
+    ]
+
+    var rotatePool: [ArtImage] {
+        guard let catalog else { return [] }
+        let base = selectedPackIds.isEmpty
+            ? catalog.allAvailableImages
+            : catalog.allAvailableImages.filter { selectedPackIds.contains($0.packId) }
+        return base.filter { !dislikedIds.contains($0.id) }
+    }
+
+    var selectionLabel: String {
+        guard let catalog else { return "All" }
+        if selectedPackIds.isEmpty {
+            return "All galleries"
+        }
+        let names = catalog.availablePacks
+            .filter { selectedPackIds.contains($0.id) }
+            .map(\.shortName)
+        if names.count <= 2 {
+            return names.joined(separator: ", ")
+        }
+        return "\(names.count) galleries"
+    }
+
+    init() {
+        self.autoRotateEnabled = UserDefaults.standard.bool(forKey: "autoRotateEnabled")
+        let saved = UserDefaults.standard.double(forKey: "rotateInterval")
+        self.rotateInterval = saved > 0 ? saved : 86400
+        if let savedIds = UserDefaults.standard.array(forKey: "selectedPackIds") as? [Int] {
+            self.selectedPackIds = Set(savedIds)
+        }
+        if let savedDisliked = UserDefaults.standard.array(forKey: "dislikedIds") as? [String] {
+            self.dislikedIds = Set(savedDisliked)
+        }
+        scheduleTimer()
+    }
+
+    func setRandom() {
+        guard !rotatePool.isEmpty else { return }
+        let image = rotatePool.randomElement()!
+        setWallpaper(image)
+    }
+
+    func setWallpaper(_ image: ArtImage) {
+        guard let catalog else { return }
+        currentImage = image
+        UserDefaults.standard.set(image.id, forKey: "currentImageId")
+        if let url = image.resolvedURL(relativeTo: catalog.dataDirectory) {
+            WallpaperService.setWallpaper(url: url)
+        }
+    }
+
+    func setNext() {
+        let available = rotatePool
+        guard !available.isEmpty else { return }
+        if let current = currentImage, let idx = available.firstIndex(where: { $0.id == current.id }) {
+            let next = available[(idx + 1) % available.count]
+            setWallpaper(next)
+        } else {
+            setRandom()
+        }
+    }
+
+    func togglePack(_ packId: Int) {
+        if selectedPackIds.contains(packId) {
+            selectedPackIds.remove(packId)
+        } else {
+            selectedPackIds.insert(packId)
+        }
+        autoRotateEnabled = true
+    }
+
+    func dislike(_ image: ArtImage) {
+        dislikedIds.insert(image.id)
+        if currentImage?.id == image.id {
+            setRandom()
+        }
+    }
+
+    func undislike(_ image: ArtImage) {
+        dislikedIds.remove(image.id)
+    }
+
+    func isDisliked(_ image: ArtImage) -> Bool {
+        dislikedIds.contains(image.id)
+    }
+
+    func selectAll() {
+        selectedPackIds = []
+        autoRotateEnabled = true
+    }
+
+    func restoreCurrent() {
+        guard let catalog else { return }
+        if let savedId = UserDefaults.standard.string(forKey: "currentImageId"),
+           let image = catalog.images.first(where: { $0.id == savedId }) {
+            currentImage = image
+        }
+    }
+
+    private func scheduleTimer() {
+        timer?.invalidate()
+        timer = nil
+        guard autoRotateEnabled else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: rotateInterval, repeats: true) { [weak self] _ in
+            self?.setRandom()
+        }
+    }
+}
