@@ -7,7 +7,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "ArtWall",
-            path: "Sources/ArtWall"
+            path: "Sources/ArtWall",
+            exclude: ["Info.plist"]
         )
     ]
 )
