@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var popover: NSPopover!
     let catalog = Catalog()
     let wallpaperState = WallpaperState()
+    let updateChecker = UpdateChecker()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -20,9 +21,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.target = self
         }
 
+        updateChecker.check()
+
         let contentView = MenuBarView()
             .environment(catalog)
             .environment(wallpaperState)
+            .environment(updateChecker)
 
         popover = NSPopover()
         popover.contentSize = NSSize(width: 360, height: 480)

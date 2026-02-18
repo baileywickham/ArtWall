@@ -3,6 +3,7 @@ import SwiftUI
 struct MenuBarView: View {
     @Environment(Catalog.self) private var catalog
     @Environment(WallpaperState.self) private var state
+    @Environment(UpdateChecker.self) private var updateChecker
     @State private var selectedTab = 0
 
     var body: some View {
@@ -45,6 +46,11 @@ struct MenuBarView: View {
             .frame(width: 90)
             .disabled(!state.autoRotateEnabled)
             Spacer()
+            if updateChecker.updateAvailable {
+                Button("Update") { updateChecker.openRelease() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            }
             Button("Quit") { NSApp.terminate(nil) }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
