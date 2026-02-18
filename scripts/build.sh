@@ -25,8 +25,10 @@ cp ".build/release/${APP_NAME}" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 # Copy Info.plist with version injected
 sed "s/0.1.0/${VERSION}/g" Sources/ArtWall/Info.plist > "${APP_BUNDLE}/Contents/Info.plist"
 
-# Copy icon
+# Copy resources
 cp Sources/ArtWall/Resources/ArtWall.icns "${APP_BUNDLE}/Contents/Resources/"
+cp Sources/ArtWall/Resources/MenuBarIcon.png "${APP_BUNDLE}/Contents/Resources/"
+cp Sources/ArtWall/Resources/MenuBarIcon@2x.png "${APP_BUNDLE}/Contents/Resources/"
 
 # Ad-hoc sign
 codesign --force --deep --sign - "${APP_BUNDLE}"
