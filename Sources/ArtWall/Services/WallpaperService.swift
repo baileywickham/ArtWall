@@ -2,8 +2,9 @@ import AppKit
 
 enum WallpaperService {
     static func setWallpaper(url: URL) {
-        for screen in NSScreen.screens {
-            try? NSWorkspace.shared.setDesktopImageURL(url, for: screen, options: [:])
-        }
+        let script = NSAppleScript(source: """
+            tell application "System Events" to tell every desktop to set picture to "\(url.path)"
+            """)
+        script?.executeAndReturnError(nil)
     }
 }
