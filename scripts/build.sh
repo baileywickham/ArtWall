@@ -5,7 +5,7 @@ VERSION="${1:-0.1.0}"
 BUILD_DIR="$(pwd)/.build-app"
 APP_NAME="ArtWall"
 APP_BUNDLE="${BUILD_DIR}/${APP_NAME}.app"
-SIGN_IDENTITY="${CODESIGN_IDENTITY:-Developer ID Application: Usebits corp (Q9D9H424KQ)}"
+SIGN_IDENTITY="${CODESIGN_IDENTITY:?Set CODESIGN_IDENTITY or pass via environment}"
 
 echo "==> Building ${APP_NAME} v${VERSION}..."
 

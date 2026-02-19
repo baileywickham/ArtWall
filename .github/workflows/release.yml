@@ -34,8 +34,13 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      - name: Detect signing identity
+        id: identity
+        run: echo "identity=$(security find-identity -v -p codesigning build.keychain | head -1 | sed 's/.*"\(.*\)".*/\1/')" >> "$GITHUB_OUTPUT"
+
       - name: Build, sign, and notarize
         env:
+          CODESIGN_IDENTITY: ${{ steps.identity.outputs.identity }}
           NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
