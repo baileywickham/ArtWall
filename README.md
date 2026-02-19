@@ -2,6 +2,8 @@
 
 macOS menu bar app that sets art wallpapers from [Artpaper](https://apps.apple.com/app/artpaper/id1448139498) image packs.
 
+**[Download latest release](https://github.com/baileywickham/ArtWall/releases/latest)**
+
 ## Setup
 
 Requires Artpaper to be installed (image metadata lives in the app bundle).
