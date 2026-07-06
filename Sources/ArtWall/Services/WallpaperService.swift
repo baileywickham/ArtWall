@@ -13,11 +13,10 @@ enum WallpaperService {
 
         setWallpaperOnAllScreens(url: url)
 
-        // Best-effort update for every macOS desktop/space. This requires the
-        // Apple Events entitlement in signed builds, so keep it off the hot path.
-        Task.detached(priority: .utility) {
-            setWallpaperOnAllSpaces(url: url)
-        }
+        // Best-effort update for every macOS desktop/space. Requires the
+        // Apple Events entitlement in signed builds. NSAppleScript must run
+        // on the main thread.
+        setWallpaperOnAllSpaces(url: url)
     }
 
     @MainActor
@@ -32,6 +31,7 @@ enum WallpaperService {
         }
     }
 
+    @MainActor
     private static func setWallpaperOnAllSpaces(url: URL) {
         let escapedPath = url.path
             .replacingOccurrences(of: "\\", with: "\\\\")

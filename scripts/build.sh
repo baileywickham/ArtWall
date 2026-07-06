@@ -8,6 +8,12 @@ APP_BUNDLE="${BUILD_DIR}/${APP_NAME}.app"
 SIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
 ENTITLEMENTS_FILE="$(pwd)/ArtWall.entitlements"
 
+# Releases must never ship ad-hoc signed; only allow the fallback locally.
+if [ -z "${SIGN_IDENTITY}" ] && [ -n "${CI:-}" ]; then
+    echo "ERROR: CODESIGN_IDENTITY must be set in CI builds" >&2
+    exit 1
+fi
+
 echo "==> Building ${APP_NAME} v${VERSION}..."
 
 # Clean
