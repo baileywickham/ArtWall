@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 @Observable
@@ -23,6 +24,7 @@ final class WallpaperState {
     }
 
     private var timer: Timer?
+    private var spaceObserver: NSObjectProtocol?
 
     static let intervals: [(String, TimeInterval)] = [
         ("1 minute", 60),
@@ -67,6 +69,27 @@ final class WallpaperState {
             self.dislikedIds = Set(savedDisliked)
         }
         scheduleTimer()
+
+        // macOS wallpaper APIs only affect the currently visible space, so
+        // re-apply on every space switch to keep all spaces on the same image.
+        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.reapplyCurrent()
+            }
+        }
+    }
+
+    private func reapplyCurrent() {
+        if currentImage == nil {
+            restoreCurrent()
+        }
+        guard let catalog, let image = currentImage,
+              let url = image.resolvedURL(relativeTo: catalog.dataDirectory) else { return }
+        WallpaperService.setWallpaper(url: url)
     }
 
     func setRandom() {

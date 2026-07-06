@@ -40,7 +40,7 @@ Swift Package (swift-tools-version 5.10) with a single executable target. No ext
   - `WallpaperState` — rotation logic, dislike list, selected galleries, timer scheduling. All preferences persisted via `UserDefaults`
   - `ArtImage` / `ArtPack` — Codable data types
 - **Services/**:
-  - `WallpaperService` — sets wallpaper on all desktops via `NSAppleScript`
+  - `WallpaperService` — sets wallpaper on all screens via `NSWorkspace`; `WallpaperState` re-applies it on space switches so all spaces match
   - `ImageLoader` — singleton with `NSCache`-backed thumbnail generation using `CGImageSource`
   - `UpdateChecker` — polls GitHub releases API, compares version strings
 - **Views/** — SwiftUI views displayed in the popover:

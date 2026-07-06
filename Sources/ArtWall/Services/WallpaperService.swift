@@ -12,13 +12,11 @@ enum WallpaperService {
         }
 
         setWallpaperOnAllScreens(url: url)
-
-        // Best-effort update for every macOS desktop/space. Requires the
-        // Apple Events entitlement in signed builds. NSAppleScript must run
-        // on the main thread.
-        setWallpaperOnAllSpaces(url: url)
     }
 
+    // macOS only applies desktop images to the space currently visible on
+    // each display; WallpaperState re-applies on space switches so every
+    // space converges to the current image.
     @MainActor
     private static func setWallpaperOnAllScreens(url: URL) {
         for screen in NSScreen.screens {
@@ -28,22 +26,6 @@ enum WallpaperService {
             } catch {
                 logger.error("Failed to set wallpaper on screen \(screen.localizedName): \(error.localizedDescription)")
             }
-        }
-    }
-
-    @MainActor
-    private static func setWallpaperOnAllSpaces(url: URL) {
-        let escapedPath = url.path
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        let script = NSAppleScript(source: """
-            tell application "System Events" to tell every desktop to set picture to "\(escapedPath)"
-            """)
-
-        var errorInfo: NSDictionary?
-        script?.executeAndReturnError(&errorInfo)
-        if let errorInfo {
-            logger.error("AppleScript failed: \(String(describing: errorInfo), privacy: .public)")
         }
     }
 }
