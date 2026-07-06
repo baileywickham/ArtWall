@@ -5,7 +5,8 @@ VERSION="${1:-0.1.0}"
 BUILD_DIR="$(pwd)/.build-app"
 APP_NAME="ArtWall"
 APP_BUNDLE="${BUILD_DIR}/${APP_NAME}.app"
-SIGN_IDENTITY="${CODESIGN_IDENTITY:?Set CODESIGN_IDENTITY or pass via environment}"
+SIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
+ENTITLEMENTS_FILE="$(pwd)/ArtWall.entitlements"
 
 echo "==> Building ${APP_NAME} v${VERSION}..."
 
@@ -32,7 +33,13 @@ cp Sources/ArtWall/Resources/MenuBarIcon.png "${APP_BUNDLE}/Contents/Resources/"
 cp Sources/ArtWall/Resources/MenuBarIcon@2x.png "${APP_BUNDLE}/Contents/Resources/"
 
 # Code sign
-codesign --force --options runtime --timestamp --sign "${SIGN_IDENTITY}" "${APP_BUNDLE}"
+if [ -n "${SIGN_IDENTITY}" ]; then
+    echo "==> Code signing with identity: ${SIGN_IDENTITY}"
+    codesign --force --options runtime --timestamp --entitlements "${ENTITLEMENTS_FILE}" --sign "${SIGN_IDENTITY}" "${APP_BUNDLE}"
+else
+    echo "==> CODESIGN_IDENTITY not set; using ad-hoc signature for local testing"
+    codesign --force --entitlements "${ENTITLEMENTS_FILE}" --sign - "${APP_BUNDLE}"
+fi
 
 echo "==> App bundle created at ${APP_BUNDLE}"
 
@@ -63,7 +70,7 @@ ditto -c -k --sequesterRsrc --keepParent "${APP_BUNDLE}" "${ZIP_PATH}"
 echo "==> Zip created at ${ZIP_PATH}"
 
 # Notarize the DMG
-if [ -n "${NOTARY_PASSWORD:-}" ]; then
+if [ -n "${NOTARY_PASSWORD:-}" ] && [ -n "${SIGN_IDENTITY}" ]; then
     NOTARY_ARGS="--apple-id ${APPLE_ID} --team-id ${APPLE_TEAM_ID} --password ${NOTARY_PASSWORD}"
 
     echo "==> Notarizing DMG..."
@@ -77,6 +84,8 @@ if [ -n "${NOTARY_PASSWORD:-}" ]; then
     fi
     xcrun stapler staple "${DMG_PATH}"
     echo "==> DMG notarized and stapled"
+elif [ -n "${NOTARY_PASSWORD:-}" ]; then
+    echo "==> Ad-hoc signed build; skipping notarization"
 else
     echo "==> NOTARY_PASSWORD not set, skipping notarization"
 fi

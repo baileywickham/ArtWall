@@ -1,6 +1,7 @@
 import Foundation
 
 @Observable
+@MainActor
 final class WallpaperState {
     var catalog: Catalog?
     var currentImage: ArtImage?
@@ -136,7 +137,9 @@ final class WallpaperState {
         timer = nil
         guard autoRotateEnabled else { return }
         timer = Timer.scheduledTimer(withTimeInterval: rotateInterval, repeats: true) { [weak self] _ in
-            self?.setRandom()
+            Task { @MainActor [weak self] in
+                self?.setRandom()
+            }
         }
     }
 }
