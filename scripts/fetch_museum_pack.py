@@ -49,10 +49,20 @@ def fill_scale(w, h):
     return max(SCREEN_W / w, SCREEN_H / h) if w and h else 99.0
 
 
-def get_json(url):
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.load(resp)
+def get_json(url, attempts=5):
+    """GET JSON with exponential backoff on rate limits and server errors."""
+    for attempt in range(attempts):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                return json.load(resp)
+        except urllib.error.HTTPError as e:
+            if e.code in (403, 429, 500, 502, 503) and attempt < attempts - 1:
+                wait = 30 * (attempt + 1)
+                print(f"  HTTP {e.code}, backing off {wait}s...")
+                time.sleep(wait)
+                continue
+            raise
 
 
 def download(url, dst):
@@ -108,7 +118,7 @@ class PackWriter:
             except Exception as e:
                 print(f"  skip {title[:50]}: {e}")
                 return False
-            time.sleep(0.4)
+            time.sleep(0.8)
             w, h = jpeg_dimensions(dst)
             if fill_scale(w, h) > MAX_SCALE:
                 dst.unlink()
@@ -255,11 +265,17 @@ def main():
 
     fetchers = {"aic": fetch_aic, "met": fetch_met, "cma": fetch_cma}
     if args.source == "all":
-        split = {"aic": args.total * 2 // 5, "met": args.total * 3 // 10,
-                 "cma": args.total * 3 // 10}
-        packs = [fetchers[s](n) for s, n in split.items()]
+        quotas = {"aic": args.total * 2 // 5, "met": args.total * 3 // 10,
+                  "cma": args.total * 3 // 10}
     else:
-        packs = [fetchers[args.source](args.limit)]
+        quotas = {args.source: args.limit}
+    packs = []
+    for source, quota in quotas.items():
+        try:
+            packs.append(fetchers[source](quota))
+        except Exception as e:
+            print(f"{source} aborted after an unrecoverable error: {e}")
+    # Merge whatever succeeded; a partial pack is still usable.
     merge_catalog(packs)
 
 
