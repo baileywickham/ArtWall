@@ -1,5 +1,9 @@
 import AppKit
 import Foundation
+import ServiceManagement
+import os.log
+
+private let logger = Logger(subsystem: "com.baileywickham.ArtWall", category: "WallpaperState")
 
 @Observable
 @MainActor
@@ -21,6 +25,16 @@ final class WallpaperState {
     }
     var rotateInterval: TimeInterval {
         didSet { UserDefaults.standard.set(rotateInterval, forKey: "rotateInterval"); scheduleTimer() }
+    }
+    var launchAtLogin: Bool {
+        didSet {
+            UserDefaults.standard.set(launchAtLogin, forKey: "launchAtLogin")
+            updateLoginItem(userInitiated: true)
+        }
+    }
+    private var lastRotationDate: Date? {
+        get { UserDefaults.standard.object(forKey: "lastRotationDate") as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: "lastRotationDate") }
     }
 
     private var timer: Timer?
@@ -62,6 +76,7 @@ final class WallpaperState {
         self.autoRotateEnabled = UserDefaults.standard.bool(forKey: "autoRotateEnabled")
         let saved = UserDefaults.standard.double(forKey: "rotateInterval")
         self.rotateInterval = saved > 0 ? saved : 86400
+        self.launchAtLogin = UserDefaults.standard.object(forKey: "launchAtLogin") as? Bool ?? true
         if let savedIds = UserDefaults.standard.array(forKey: "selectedPackIds") as? [Int] {
             self.selectedPackIds = Set(savedIds)
         }
@@ -69,6 +84,7 @@ final class WallpaperState {
             self.dislikedIds = Set(savedDisliked)
         }
         scheduleTimer()
+        updateLoginItem()
 
         // macOS wallpaper APIs only affect the currently visible space, so
         // re-apply on every space switch to keep all spaces on the same image.
@@ -101,6 +117,7 @@ final class WallpaperState {
     func setWallpaper(_ image: ArtImage) {
         guard let catalog else { return }
         currentImage = image
+        lastRotationDate = Date()
         UserDefaults.standard.set(image.id, forKey: "currentImageId")
         if let url = image.resolvedURL(relativeTo: catalog.dataDirectory) {
             WallpaperService.setWallpaper(url: url)
@@ -159,10 +176,36 @@ final class WallpaperState {
         timer?.invalidate()
         timer = nil
         guard autoRotateEnabled else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: rotateInterval, repeats: true) { [weak self] _ in
+        // Schedule from the persisted last rotation, not from app launch —
+        // otherwise a Mac that reboots more often than the interval never
+        // rotates. Overdue rotations (e.g. after days powered off) fire
+        // almost immediately, then the cycle continues from there.
+        let elapsed = lastRotationDate.map { Date().timeIntervalSince($0) } ?? rotateInterval
+        let delay = max(rotateInterval - elapsed, 1)
+        timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.setRandom()
+                self?.scheduleTimer()
             }
+        }
+    }
+
+    private func updateLoginItem(userInitiated: Bool = false) {
+        let service = SMAppService.mainApp
+        do {
+            if launchAtLogin {
+                guard service.status != .enabled else { return }
+                // Auto-register only on first run; if the user disabled the
+                // login item in System Settings, don't fight them — only a
+                // deliberate toggle in our Settings re-registers.
+                if userInitiated || service.status == .notFound {
+                    try service.register()
+                }
+            } else if service.status == .enabled {
+                try service.unregister()
+            }
+        } catch {
+            logger.error("Failed to update login item: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

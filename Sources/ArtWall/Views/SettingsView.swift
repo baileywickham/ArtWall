@@ -6,6 +6,8 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var s = state
         Form {
+            Toggle("Launch at login", isOn: $s.launchAtLogin)
+
             Toggle("Auto-rotate wallpaper", isOn: $s.autoRotateEnabled)
 
             Picker("Interval", selection: $s.rotateInterval) {
