@@ -28,5 +28,15 @@
     <true/>
     <key>CFBundleIconFile</key>
     <string>ArtWall</string>
+    <key>SUFeedURL</key>
+    <string>https://github.com/baileywickham/ArtWall/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>i8Jw7bLedMNx2oHKSUqeuzcTY9NRoOeVTepLdf4tZys=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUAutomaticallyUpdate</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
 </dict>
 </plist>
