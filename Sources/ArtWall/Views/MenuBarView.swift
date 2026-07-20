@@ -52,6 +52,7 @@ struct MenuBarView: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .fixedSize()
+                    .accessibilityIdentifier("restart-to-update")
             } else {
                 Text(Self.versionString)
                     .font(.caption2)

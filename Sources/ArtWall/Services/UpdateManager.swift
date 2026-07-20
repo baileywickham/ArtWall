@@ -49,6 +49,9 @@ extension UpdateManager: SPUUpdaterDelegate {
             self.installNow = immediateInstallationBlock
             self.updateReady = true
         }
+        // Returning true stalls this and future update cycles until the staged update
+        // installs (button click or app quit). Updates chain on next launch, so a
+        // long-ignored button only delays, never loses, updates.
         return true
     }
 }
