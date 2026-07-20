@@ -43,12 +43,38 @@ cp Sources/ArtWall/Resources/ArtWall.icns "${APP_BUNDLE}/Contents/Resources/"
 cp Sources/ArtWall/Resources/MenuBarIcon.png "${APP_BUNDLE}/Contents/Resources/"
 cp Sources/ArtWall/Resources/MenuBarIcon@2x.png "${APP_BUNDLE}/Contents/Resources/"
 
-# Code sign
+# Embed Sparkle.framework (SPM binary artifact) so the app can auto-update
+SPARKLE_FRAMEWORK="$(find .build/artifacts -type d -name 'Sparkle.framework' -path '*macos*' | head -1)"
+if [ -z "${SPARKLE_FRAMEWORK}" ]; then
+    echo "ERROR: Sparkle.framework not found under .build/artifacts (run swift build -c release first)" >&2
+    exit 1
+fi
+mkdir -p "${APP_BUNDLE}/Contents/Frameworks"
+cp -R "${SPARKLE_FRAMEWORK}" "${APP_BUNDLE}/Contents/Frameworks/"
+
+# Sign inside-out: Sparkle's nested executables, then the framework, then the app.
+# --preserve-metadata=entitlements keeps the XPC services' sandbox entitlements.
+EMBEDDED_SPARKLE="${APP_BUNDLE}/Contents/Frameworks/Sparkle.framework"
+sign_sparkle() {
+    for nested in \
+        "${EMBEDDED_SPARKLE}/Versions/B/XPCServices/Downloader.xpc" \
+        "${EMBEDDED_SPARKLE}/Versions/B/XPCServices/Installer.xpc" \
+        "${EMBEDDED_SPARKLE}/Versions/B/Autoupdate" \
+        "${EMBEDDED_SPARKLE}/Versions/B/Updater.app"; do
+        if [ -e "${nested}" ]; then
+            codesign --force --preserve-metadata=entitlements "$@" "${nested}"
+        fi
+    done
+    codesign --force "$@" "${EMBEDDED_SPARKLE}"
+}
+
 if [ -n "${SIGN_IDENTITY}" ]; then
     echo "==> Code signing with identity: ${SIGN_IDENTITY}"
+    sign_sparkle --options runtime --timestamp --sign "${SIGN_IDENTITY}"
     codesign --force --options runtime --timestamp --entitlements "${ENTITLEMENTS_FILE}" --sign "${SIGN_IDENTITY}" "${APP_BUNDLE}"
 else
     echo "==> CODESIGN_IDENTITY not set; using ad-hoc signature for local testing"
+    sign_sparkle --sign -
     codesign --force --entitlements "${ENTITLEMENTS_FILE}" --sign - "${APP_BUNDLE}"
 fi
 
