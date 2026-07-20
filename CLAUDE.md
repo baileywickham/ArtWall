@@ -17,6 +17,9 @@ swift test                      # Run tests (no test targets yet)
 
 The release workflow (`scripts/build.sh`) creates a signed `.app` bundle, DMG, and ZIP. It requires `CODESIGN_IDENTITY` env var. Releases are triggered by pushing a `v*` tag.
 
+Releases also publish `appcast.xml`; Sparkle clients read it via
+`https://github.com/baileywickham/ArtWall/releases/latest/download/appcast.xml`.
+
 ## Image Data Setup
 
 Images live in `Data/` (gitignored). Before running, extract images from a local Artpaper installation:
@@ -42,7 +45,7 @@ Swift Package (swift-tools-version 5.10) with a single executable target. No ext
 - **Services/**:
   - `WallpaperService` — sets wallpaper on all screens via `NSWorkspace`; `WallpaperState` re-applies it on space switches so all spaces match
   - `ImageLoader` — singleton with `NSCache`-backed thumbnail generation using `CGImageSource`
-  - `UpdateChecker` — polls GitHub releases API, compares version strings
+  - `UpdateManager` — Sparkle 2 wrapper (silent auto-updates from GitHub release appcast; "Restart to update" appears in the popover when an update is staged). Only active when running from a .app bundle.
 - **Views/** — SwiftUI views displayed in the popover:
   - `MenuBarView` — root tabbed view (Current / Browse) with rotation controls
   - `CurrentWallpaperView` — shows current wallpaper preview, metadata, Random/Next/Dislike buttons
