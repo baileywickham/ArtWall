@@ -46,6 +46,21 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: ./scripts/build.sh "${{ steps.version.outputs.version }}"
 
+      - name: Generate Sparkle appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          SPARKLE_VERSION=2.9.4
+          curl -sL -o /tmp/sparkle.tar.xz "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          mkdir -p /tmp/sparkle && tar -xf /tmp/sparkle.tar.xz -C /tmp/sparkle
+          mkdir -p /tmp/appcast
+          cp ".build-app/ArtWall-${{ steps.version.outputs.version }}-macOS.zip" /tmp/appcast/
+          echo "$SPARKLE_PRIVATE_KEY" | /tmp/sparkle/bin/generate_appcast \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/baileywickham/ArtWall/releases/download/v${{ steps.version.outputs.version }}/" \
+            /tmp/appcast
+          cp /tmp/appcast/appcast.xml .build-app/appcast.xml
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -54,3 +69,4 @@ jobs:
           files: |
             .build-app/ArtWall-${{ steps.version.outputs.version }}-macOS.dmg
             .build-app/ArtWall-${{ steps.version.outputs.version }}-macOS.zip
+            .build-app/appcast.xml
