@@ -33,19 +33,25 @@ struct MenuBarView: View {
 
     private var bottomBar: some View {
         @Bindable var s = state
-        return HStack(spacing: 8) {
+        return HStack(spacing: 6) {
             Toggle("Rotate", isOn: $s.autoRotateEnabled)
                 .toggleStyle(.switch)
                 .controlSize(.small)
+                .fixedSize()
             Picker("", selection: $s.rotateInterval) {
                 ForEach(WallpaperState.intervals, id: \.1) { label, interval in
                     Text(label).tag(interval)
                 }
             }
             .controlSize(.small)
-            .frame(width: 90)
+            .frame(width: 84)
             .disabled(!state.autoRotateEnabled)
-            Spacer()
+            Spacer(minLength: 4)
+            Text(Self.versionString)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .fixedSize()
             if updateChecker.updateAvailable {
                 Button("Update") { updateChecker.openRelease() }
                     .buttonStyle(.borderedProminent)
@@ -54,8 +60,18 @@ struct MenuBarView: View {
             Button("Quit") { NSApp.terminate(nil) }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
+                .fixedSize()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
+
+    // "0.2.7 · af5f52b", with "*" marking a build from a dirty working tree
+    private static let versionString: String = {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+        if let commit = Bundle.main.object(forInfoDictionaryKey: "ArtWallGitCommit") as? String {
+            return "\(version) · \(commit.replacingOccurrences(of: "-dirty", with: "*"))"
+        }
+        return version
+    }()
 }

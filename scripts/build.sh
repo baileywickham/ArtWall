@@ -33,6 +33,11 @@ cp ".build/release/${APP_NAME}" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 # Copy Info.plist with version injected
 sed "s/0.1.0/${VERSION}/g" Sources/ArtWall/Info.plist > "${APP_BUNDLE}/Contents/Info.plist"
 
+# Record the git commit so the UI can show exactly what was built
+GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+git diff-index --quiet HEAD -- 2>/dev/null || GIT_COMMIT="${GIT_COMMIT}-dirty"
+/usr/libexec/PlistBuddy -c "Add :ArtWallGitCommit string ${GIT_COMMIT}" "${APP_BUNDLE}/Contents/Info.plist"
+
 # Copy resources
 cp Sources/ArtWall/Resources/ArtWall.icns "${APP_BUNDLE}/Contents/Resources/"
 cp Sources/ArtWall/Resources/MenuBarIcon.png "${APP_BUNDLE}/Contents/Resources/"
