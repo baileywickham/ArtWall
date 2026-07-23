@@ -191,6 +191,9 @@ final class WallpaperState {
     }
 
     private func updateLoginItem(userInitiated: Bool = false) {
+        // Bare `swift build` binaries would get registered as raw-executable
+        // login items, which macOS opens in a terminal window at login.
+        guard Bundle.main.bundleURL.pathExtension == "app" else { return }
         let service = SMAppService.mainApp
         do {
             if launchAtLogin {
