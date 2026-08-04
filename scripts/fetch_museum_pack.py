@@ -7,10 +7,14 @@ Sources (all CC0/public domain, paintings only, curated highlights first):
   met  pack 101  The Metropolitan Museum of Art  (full originals)
   cma  pack 102  Cleveland Museum of Art  (print rendition, ~3400px)
 
-Only images needing <= 3% upscaling on a 3024x1964 display are kept.
+Only images needing <= 3% upscaling on a 3024x1964 display are kept, and
+anything losing more than 30% of its area to the fill crop (wrong aspect
+ratio for the screen) is rejected.
 Oversized Met originals are downscaled to 4500px to keep the pack lean.
 
-Re-runnable: existing files are kept, catalog.json is merged non-destructively.
+Files are named by museum artwork id (e.g. aic_129884.jpg), so a re-run
+pairs each existing file with its own metadata and never downloads the
+same artwork twice. catalog.json is merged non-destructively.
 Note: scripts/extract_images.py rewrites catalog.json — re-run this script
 afterwards to restore these packs' entries (images on disk are untouched).
 
@@ -25,12 +29,12 @@ import struct
 import subprocess
 import time
 import urllib.parse
-import urllib.request
 from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "Data"
 SCREEN_W, SCREEN_H = 3024, 1964
 MAX_SCALE = 1.03      # accept up to 3% upscale (imperceptible)
+MAX_CROP = 0.30       # reject if fill-cropping loses more than 30% of the image
 MAX_LONG_SIDE = 4500  # downscale anything bigger to keep disk usage sane
 UA = "ArtWall/1.0 (github.com/baileywickham/ArtWall; bailey@usebits.com)"
 
@@ -49,16 +53,46 @@ def fill_scale(w, h):
     return max(SCREEN_W / w, SCREEN_H / h) if w and h else 99.0
 
 
-def get_json(url, attempts=5):
+def crop_frac(w, h):
+    """Fraction of the image area lost when macOS scales it to fill the screen."""
+    if not (w and h):
+        return 1.0
+    screen_ar, ar = SCREEN_W / SCREEN_H, w / h
+    return 1 - min(ar, screen_ar) / max(ar, screen_ar)
+
+
+def acceptable(w, h):
+    return fill_scale(w, h) <= MAX_SCALE and crop_frac(w, h) <= MAX_CROP
+
+
+class FetchError(Exception):
+    def __init__(self, code, detail=""):
+        self.code = code
+        super().__init__(f"HTTP {code} {detail}".strip())
+
+
+def http_get(url, timeout=300):
+    """GET via curl. AWS WAF (CloudFront) on api.artic.edu 403s Python's
+    TLS fingerprint while curl sails through, so we shell out."""
+    r = subprocess.run(["curl", "-sS", "-A", UA, "--max-time", str(timeout),
+                        "-w", "%{http_code}", url], capture_output=True)
+    if r.returncode:
+        raise FetchError(0, r.stderr.decode(errors="replace").strip()[:120])
+    body, code = r.stdout[:-3], int(r.stdout[-3:])
+    if code >= 400:
+        raise FetchError(code)
+    return body
+
+
+def get_json(url, attempts=8):
     """GET JSON with exponential backoff on rate limits and server errors."""
     for attempt in range(attempts):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": UA})
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                return json.load(resp)
-        except urllib.error.HTTPError as e:
-            if e.code in (403, 429, 500, 502, 503) and attempt < attempts - 1:
-                wait = 30 * (attempt + 1)
+            return json.loads(http_get(url, timeout=60))
+        except FetchError as e:
+            if (e.code in (0, 403, 429, 500, 502, 503)
+                    and attempt < attempts - 1):
+                wait = 120 * (attempt + 1)
                 print(f"  HTTP {e.code}, backing off {wait}s...")
                 time.sleep(wait)
                 continue
@@ -66,9 +100,7 @@ def get_json(url, attempts=5):
 
 
 def download(url, dst):
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        dst.write_bytes(resp.read())
+    dst.write_bytes(http_get(url))
 
 
 def jpeg_dimensions(path):
@@ -99,6 +131,7 @@ class PackWriter:
     """Accumulates validated images for one pack, skipping existing files."""
 
     def __init__(self, source, limit):
+        self.source = source
         self.pack_id, self.short, self.name, self.attribution = PACKS[source]
         self.limit = limit
         self.dir = DATA_DIR / "images" / f"pack_{self.pack_id}"
@@ -109,38 +142,39 @@ class PackWriter:
     def done(self):
         return len(self.entries) >= self.limit
 
-    def add(self, url, title, creator, year, downscale=False):
-        idx = len(self.entries)
-        dst = self.dir / f"{idx:03d}.jpg"
+    def add(self, source_id, url, title, creator, year, downscale=False):
+        name = f"{self.source}_{source_id}.jpg"
+        dst = self.dir / name
         if not dst.exists():
             try:
                 download(url, dst)
             except Exception as e:
                 print(f"  skip {title[:50]}: {e}")
                 return False
-            time.sleep(0.8)
-            w, h = jpeg_dimensions(dst)
-            if fill_scale(w, h) > MAX_SCALE:
-                dst.unlink()
-                return False
+            # AIC's WAF flags this IP after modest bursts; stay well under.
+            time.sleep(12.0 if self.source == "aic" else 0.8)
             if downscale:
                 shrink_if_huge(dst)
+        # Validate final on-disk dimensions even for reused files, so
+        # tightened thresholds prune stale images on re-runs.
+        if not acceptable(*jpeg_dimensions(dst)):
+            dst.unlink()
+            return False
         self.entries.append({
-            "id": f"{self.pack_id}_{idx:03d}",
+            "id": f"{self.pack_id}_{self.source}_{source_id}",
             "packId": self.pack_id,
-            "index": idx,
+            "index": len(self.entries),
             "title": title or "Untitled",
             "creator": creator or "",
             "year": year or "",
             "attribution": self.attribution,
-            "imagePath": f"images/pack_{self.pack_id}/{idx:03d}.jpg",
+            "imagePath": f"images/pack_{self.pack_id}/{name}",
         })
         print(f"  [{self.short} {len(self.entries)}/{self.limit}] {title[:60]}")
         return True
 
 
-def fetch_aic(limit):
-    pack = PackWriter("aic", limit)
+def fetch_aic(pack):
     iiif_max = 3000  # AIC serves at most 3000px on the long side
     page = 1
     while not pack.done and page <= 30:
@@ -163,21 +197,20 @@ def fetch_aic(limit):
             if w and h and max(w, h) > iiif_max:
                 f = iiif_max / max(w, h)
                 w, h = round(w * f), round(h * f)
-            if not art.get("image_id") or fill_scale(w, h) > MAX_SCALE:
+            if not art.get("image_id") or not acceptable(w, h):
                 continue
             url = (f"https://www.artic.edu/iiif/2/{art['image_id']}"
                    "/full/full/0/default.jpg")
-            pack.add(url, art.get("title"),
+            pack.add(art["id"], url, art.get("title"),
                      (art.get("artist_display") or "").split("\n")[0],
                      art.get("date_display"))
         if page >= result.get("pagination", {}).get("total_pages", 1):
             break
         page += 1
-    return pack
+        time.sleep(20)
 
 
-def fetch_met(limit):
-    pack = PackWriter("met", limit)
+def fetch_met(pack):
     base = "https://collectionapi.metmuseum.org/public/collection/v1"
     searches = [  # curated highlights first, then broader painting sweeps
         "hasImages=true&isHighlight=true&medium=Paintings&q=painting",
@@ -206,14 +239,12 @@ def fetch_met(limit):
                     or obj.get("classification") != "Paintings"
                     or not obj.get("primaryImage")):
                 continue
-            pack.add(obj["primaryImage"], obj.get("title"),
+            pack.add(oid, obj["primaryImage"], obj.get("title"),
                      obj.get("artistDisplayName"), obj.get("objectDate"),
                      downscale=True)
-    return pack
 
 
-def fetch_cma(limit):
-    pack = PackWriter("cma", limit)
+def fetch_cma(pack):
     base = "https://openaccess-api.clevelandart.org/api/artworks/"
     skip = 0
     while not pack.done:
@@ -228,30 +259,39 @@ def fetch_cma(limit):
             rend = (art.get("images") or {}).get("print") or {}
             w = int(rend.get("width") or 0)
             h = int(rend.get("height") or 0)
-            if not rend.get("url") or fill_scale(w, h) > MAX_SCALE:
+            if not rend.get("url") or not acceptable(w, h):
                 continue
             creators = art.get("creators") or []
             creator = creators[0].get("description", "") if creators else ""
-            pack.add(rend["url"], art.get("title"), creator.split("(")[0].strip(),
-                     art.get("creation_date"))
+            pack.add(art["id"], rend["url"], art.get("title"),
+                     creator.split("(")[0].strip(), art.get("creation_date"))
         skip += 100
-    return pack
 
 
 def merge_catalog(packs):
     catalog_path = DATA_DIR / "catalog.json"
     catalog = json.loads(catalog_path.read_text())
     for pack in packs:
+        # Union with the pack's existing entries (by id) so an aborted run
+        # can never shrink a pack below what is already on disk. Entries
+        # whose file was pruned by a re-validation are dropped.
+        have = {e["id"] for e in pack.entries}
+        kept = [i for i in catalog["images"]
+                if i["packId"] == pack.pack_id and i["id"] not in have
+                and (DATA_DIR / i["imagePath"]).exists()]
+        entries = pack.entries + kept
+        for n, e in enumerate(entries):
+            e["index"] = n
         catalog["packs"] = [p for p in catalog["packs"] if p["id"] != pack.pack_id]
         catalog["images"] = [i for i in catalog["images"]
                              if i["packId"] != pack.pack_id]
         catalog["packs"].append({
             "id": pack.pack_id, "shortName": pack.short,
-            "name": pack.name, "imageCount": len(pack.entries),
+            "name": pack.name, "imageCount": len(entries),
         })
-        catalog["images"].extend(pack.entries)
+        catalog["images"].extend(entries)
         print(f"catalog: pack {pack.pack_id} ({pack.short}) -> "
-              f"{len(pack.entries)} images")
+              f"{len(entries)} images ({len(pack.entries)} from this run)")
     catalog_path.write_text(json.dumps(catalog, indent=1, ensure_ascii=False))
 
 
@@ -271,11 +311,15 @@ def main():
         quotas = {args.source: args.limit}
     packs = []
     for source, quota in quotas.items():
+        pack = PackWriter(source, quota)
         try:
-            packs.append(fetchers[source](quota))
+            fetchers[source](pack)
         except Exception as e:
-            print(f"{source} aborted after an unrecoverable error: {e}")
-    # Merge whatever succeeded; a partial pack is still usable.
+            print(f"{source} aborted early ({e}); keeping the "
+                  f"{len(pack.entries)} images fetched so far")
+        packs.append(pack)
+    # Merge everything, including partial packs — a re-run resumes from
+    # the files already on disk without re-downloading.
     merge_catalog(packs)
 
 
