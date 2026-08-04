@@ -15,6 +15,16 @@ final class WallpaperState {
             UserDefaults.standard.set(Array(dislikedIds), forKey: "dislikedIds")
         }
     }
+    var likedIds: Set<String> = [] {
+        didSet {
+            UserDefaults.standard.set(Array(likedIds), forKey: "likedIds")
+        }
+    }
+    var likedSelected: Bool = false {
+        didSet {
+            UserDefaults.standard.set(likedSelected, forKey: "likedSelected")
+        }
+    }
     var selectedPackIds: Set<Int> = [] {
         didSet {
             UserDefaults.standard.set(Array(selectedPackIds), forKey: "selectedPackIds")
@@ -50,20 +60,32 @@ final class WallpaperState {
         ("Daily", 86400),
     ]
 
+    var isAllSelected: Bool {
+        selectedPackIds.isEmpty && !likedSelected
+    }
+
     var rotatePool: [ArtImage] {
         guard let catalog else { return [] }
-        let base = selectedPackIds.isEmpty
+        let base = isAllSelected
             ? catalog.allAvailableImages
-            : catalog.allAvailableImages.filter { selectedPackIds.contains($0.packId) }
+            : catalog.allAvailableImages.filter {
+                selectedPackIds.contains($0.packId) || (likedSelected && likedIds.contains($0.id))
+            }
         return base.filter { !dislikedIds.contains($0.id) }
+    }
+
+    var likedImages: [ArtImage] {
+        guard let catalog else { return [] }
+        return catalog.allAvailableImages.filter { likedIds.contains($0.id) }
     }
 
     var selectionLabel: String {
         guard let catalog else { return "All" }
-        if selectedPackIds.isEmpty {
+        if isAllSelected {
             return "All galleries"
         }
-        let names = catalog.availablePacks
+        var names = likedSelected ? ["Liked"] : []
+        names += catalog.availablePacks
             .filter { selectedPackIds.contains($0.id) }
             .map(\.shortName)
         if names.count <= 2 {
@@ -83,6 +105,10 @@ final class WallpaperState {
         if let savedDisliked = UserDefaults.standard.array(forKey: "dislikedIds") as? [String] {
             self.dislikedIds = Set(savedDisliked)
         }
+        if let savedLiked = UserDefaults.standard.array(forKey: "likedIds") as? [String] {
+            self.likedIds = Set(savedLiked)
+        }
+        self.likedSelected = UserDefaults.standard.bool(forKey: "likedSelected")
         scheduleTimer()
         updateLoginItem()
 
@@ -146,6 +172,7 @@ final class WallpaperState {
 
     func dislike(_ image: ArtImage) {
         dislikedIds.insert(image.id)
+        likedIds.remove(image.id)
         if currentImage?.id == image.id {
             setRandom()
         }
@@ -159,8 +186,27 @@ final class WallpaperState {
         dislikedIds.contains(image.id)
     }
 
+    func like(_ image: ArtImage) {
+        likedIds.insert(image.id)
+        dislikedIds.remove(image.id)
+    }
+
+    func unlike(_ image: ArtImage) {
+        likedIds.remove(image.id)
+    }
+
+    func isLiked(_ image: ArtImage) -> Bool {
+        likedIds.contains(image.id)
+    }
+
+    func toggleLikedSelection() {
+        likedSelected.toggle()
+        autoRotateEnabled = true
+    }
+
     func selectAll() {
         selectedPackIds = []
+        likedSelected = false
         autoRotateEnabled = true
     }
 

@@ -25,6 +25,15 @@ struct CurrentWallpaperView: View {
 
             HStack(spacing: 12) {
                 if let image = state.currentImage {
+                    let liked = state.isLiked(image)
+                    Button {
+                        liked ? state.unlike(image) : state.like(image)
+                    } label: {
+                        Image(systemName: liked ? "hand.thumbsup.fill" : "hand.thumbsup")
+                            .foregroundStyle(liked ? Color.accentColor : Color.primary)
+                    }
+                    .buttonStyle(.bordered)
+                    .help(liked ? "Remove from Liked" : "Add to Liked")
                     Button {
                         state.dislike(image)
                     } label: {
