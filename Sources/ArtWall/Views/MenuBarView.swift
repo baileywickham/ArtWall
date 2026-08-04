@@ -53,6 +53,18 @@ struct MenuBarView: View {
                     .controlSize(.small)
                     .fixedSize()
                     .accessibilityIdentifier("restart-to-update")
+            } else if updateManager.active {
+                // The version label doubles as the manual update check.
+                Button { updateManager.checkForUpdates() } label: {
+                    Text(updateLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+                .buttonStyle(.plain)
+                .help("Check for updates")
+                .accessibilityIdentifier("check-for-updates")
             } else {
                 Text(Self.versionString)
                     .font(.caption2)
@@ -67,6 +79,16 @@ struct MenuBarView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private var updateLabel: String {
+        switch updateManager.checkStatus {
+        case .idle: Self.versionString
+        case .checking: "Checking…"
+        case .downloading: "Downloading…"
+        case .upToDate: "Up to date"
+        case .failed: "Check failed"
+        }
     }
 
     // "0.2.7 · af5f52b", with "*" marking a build from a dirty working tree
