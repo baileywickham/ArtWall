@@ -8,6 +8,8 @@ on:
 
 jobs:
   release:
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     runs-on: macos-15
     permissions:
       contents: write
@@ -70,3 +72,12 @@ jobs:
             .build-app/ArtWall-${{ steps.version.outputs.version }}-macOS.dmg
             .build-app/ArtWall-${{ steps.version.outputs.version }}-macOS.zip
             .build-app/appcast.xml
+
+  bump-cask:
+    needs: release
+    if: ${{ !contains(github.ref_name, '-') }}   # stable tags only, never -beta.N
+    uses: baileywickham/homebrew-tap/.github/workflows/bump-cask.yml@main
+    with:
+      cask: artwall
+      asset: ArtWall-${{ needs.release.outputs.version }}-macOS.dmg
+    secrets: inherit
