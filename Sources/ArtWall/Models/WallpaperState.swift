@@ -49,6 +49,7 @@ final class WallpaperState {
 
     private var timer: Timer?
     private var spaceObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
 
     static let intervals: [(String, TimeInterval)] = [
         ("1 minute", 60),
@@ -121,6 +122,20 @@ final class WallpaperState {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.reapplyCurrent()
+            }
+        }
+
+        // Timer fire dates are tracked in mach_absolute_time, which stops
+        // while the Mac sleeps, so a 24h timer only fires after 24h of
+        // *awake* time. Re-derive the schedule from the wall clock on every
+        // wake so an overdue rotation fires right away.
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.scheduleTimer()
             }
         }
     }
