@@ -80,6 +80,28 @@ fi
 
 echo "==> App bundle created at ${APP_BUNDLE}"
 
+# Notarize and staple the APP itself before packaging, not just the DMG: brew
+# copies the app out of the DMG and leaves the DMG's ticket behind. Without its
+# own ticket Gatekeeper must look it up online, and macOS 27.2 refuses an app
+# the user has not approved yet whenever that lookup fails ("could not verify
+# … free of malware", no Open button). Skylight hit this on 27.2.
+if [ -n "${NOTARY_PASSWORD:-}" ] && [ -n "${SIGN_IDENTITY}" ]; then
+    NOTARY_ARGS="--apple-id ${APPLE_ID} --team-id ${APPLE_TEAM_ID} --password ${NOTARY_PASSWORD}"
+    echo "==> Notarizing app..."
+    APP_ZIP="${BUILD_DIR}/${APP_NAME}-notarize.zip"
+    ditto -c -k --sequesterRsrc --keepParent "${APP_BUNDLE}" "${APP_ZIP}"
+    APP_RESULT=$(xcrun notarytool submit "${APP_ZIP}" ${NOTARY_ARGS} --wait --timeout 30m 2>&1) || true
+    echo "${APP_RESULT}"
+    rm -f "${APP_ZIP}"
+    if ! echo "${APP_RESULT}" | grep -q "status: Accepted"; then
+        echo "==> App notarization failed, fetching log..."
+        xcrun notarytool log "$(echo "${APP_RESULT}" | grep "id:" | head -1 | awk '{print $2}')" ${NOTARY_ARGS} || true
+        exit 1
+    fi
+    xcrun stapler staple "${APP_BUNDLE}"
+    echo "==> App notarized and stapled"
+fi
+
 # Create DMG with Applications symlink for drag-to-install
 DMG_NAME="${APP_NAME}-${VERSION}-macOS.dmg"
 DMG_PATH="${BUILD_DIR}/${DMG_NAME}"
